@@ -2,7 +2,8 @@ import { closeDb, getDb } from "../lib/db";
 import { PAGE_SIZE, fetchInfluencePage } from "../lib/wikidata";
 
 const MAX_PAGES = 15;
-const SLEEP_MS = 1500;
+const SLEEP_MS = 2500;
+const MAX_ATTEMPTS = 4;
 
 function sleep(ms: number) {
     return new Promise((r) => setTimeout(r, ms));
@@ -37,7 +38,7 @@ const writePage = db.transaction((rows: Awaited<ReturnType<typeof fetchInfluence
         upsertArtist.run({
             id: row.artistId,
             name: row.artistName,
-            year: null,
+            year: row.artistYear,
             genres: null,
             wikidata_id: row.artistId,
             spotify_id: row.artistSpotify,
@@ -49,9 +50,37 @@ const writePage = db.transaction((rows: Awaited<ReturnType<typeof fetchInfluence
     }
 });
 
+async function fetchWithRetry(offset: number) {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await fetchInfluencePage(offset, PAGE_SIZE);
+    } catch (err) {
+      lastErr = err;
+      console.warn(`  attempt ${attempt}/${MAX_ATTEMPTS} failed at offset=${offset}`);
+      await sleep(SLEEP_MS * attempt);
+    }
+  }
+  throw lastErr;
+}
+
 async function main() {
-    const rows = await fetchInfluencePage(0, 5);
-    writePage(rows);
+    let offset = 0;
+    let pages = 0;
+  
+    while (pages < MAX_PAGES) {
+      console.log(`fetching offset=${offset} …`);
+      const rows = await fetchWithRetry(offset);
+      if (rows.length === 0) break;
+  
+      writePage(rows);
+      pages += 1;
+      offset += PAGE_SIZE;
+      console.log(`  got ${rows.length} rows (page ${pages})`);
+  
+      if (rows.length < PAGE_SIZE) break;
+      await sleep(SLEEP_MS);
+    }
   
     const counts = db
       .prepare(
@@ -60,10 +89,9 @@ async function main() {
            (SELECT COUNT(*) FROM edges) AS edges`,
       )
       .get();
-    console.log("wrote", rows.length, "rows");
     console.log("totals", counts);
   
     closeDb();
-}
+  }
   
 main();
