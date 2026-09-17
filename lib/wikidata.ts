@@ -57,14 +57,24 @@ export async function fetchInfluencePage(
     body: new URLSearchParams({ query: buildQuery(offset, limit) }),
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Wikidata ${res.status}: ${body.slice(0, 500)}`);
+    throw new Error(`Wikidata ${res.status}: ${text.slice(0, 500)}`);
   }
 
-  const json = (await res.json()) as { results: { bindings: Binding[] } };
+  let json: { results?: { bindings?: Binding[] } };
+  try {
+    json = JSON.parse(text) as { results?: { bindings?: Binding[] } };
+  } catch {
+    throw new Error(`Wikidata non-JSON: ${text.slice(0, 400)}`);
+  }
 
-  return json.results.bindings.map((b) => {
+  const bindings = json.results?.bindings;
+  if (!bindings) {
+    throw new Error(`Wikidata missing bindings: ${text.slice(0, 400)}`);
+  }
+
+  return bindings.map((b) => {
     const yearRaw = val(b, "year");
     const year = yearRaw ? Number.parseInt(yearRaw, 10) : NaN;
     return {
