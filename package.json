@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "smoke": "tsx scripts/smoke-db.ts"
+    "smoke": "tsx scripts/smoke-db.ts",
+    "ingest-wikidata": "tsx scripts/ingest-wikidata.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
